@@ -4,30 +4,28 @@ import expression as exp_parser
 
 
 class Port(object):
-    def __init__(self, type, name, multi=False):
-        self._node = None
+    def __init__(self, node, type, name, multi=False):
         self._type = type
         self._name = name
+        self._node = node
         self._is_multi = multi
 
     def __repr__(self):
-        return (
-            "{s.__class__.__name__}({s._type!r}, {s._name!r}, "
-            "multi={s._is_multi})".format(s=self)
+        return "{s.__class__.__name__}({s._node!r}, {s._type!r}, {s._name!r})".format(
+            s=self
         )
-
-    def is_multi(self):
-        return self._is_multi
-
-    @property
-    def node(self):
-        return self._node
 
     def name(self):
         return self._name
 
     def type(self):
         return self._type
+
+    def is_multi(self):
+        return self._is_multi
+
+    def node(self):
+        return self._node
 
 
 class Node(object):
@@ -44,6 +42,16 @@ class Node(object):
     def __repr__(self):
         return "{s.__class__.__name__}({s._type!r}, {s._name!r})".format(s=self)
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, self.__class__)
+            and self.type() == other.type()
+            and self.name() == other.name()
+        )
+
+    def __hash__(self):
+        return hash((self.type(), self.name()))
+
     def name(self):
         return self._name
 
@@ -58,13 +66,13 @@ class Node(object):
     def children(self):
         return self._children[:]
 
-    @property
     def parent(self):
         return self._parent
 
-    def add_port(self, port):
-        port._node = self
+    def add_port(self, type, name, multi=False):
+        port = Port(self, type, name, multi=multi)
         self._ports.append(port)
+        return port
 
     def port(self, type, name):
         for port in self._ports:
@@ -83,6 +91,21 @@ class Connection(object):
     def __init__(self, source, target):
         self._source = source
         self._target = target
+
+    def __repr__(self):
+        return "{}({!r}, {!r})".format(
+            self.__class__.__name__, self.source(), self.target()
+        )
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, Connection)
+            and self.source() == other.source()
+            and self.target() == other.target()
+        )
+
+    def __hash__(self):
+        return hash((self.source(), self.target()))
 
     def source(self):
         return self._source
@@ -103,36 +126,6 @@ class DataNode(Node):
         return self.metadata(item)["value"]
 
 
-class Graph(object):
-    def __init__(self, name):
-        self._root = DataNode("root", name)
-        self._connections = []
-
-    def root(self):
-        return self._root
-
-    def connect(self, source_port, target_port):
-        connection = Connection(source_port, target_port)
-        self._connections.append(connection)
-        return connection
-
-    def connected(self, port):
-        for connection in self._connections:
-            if connection.source() == port:
-                yield connection.target()
-            elif connection.target() == port:
-                yield connection.source()
-
-    def node(self, path):
-        current = self._root
-        for name in path:
-            current = current.child(name)
-            if current is None:
-                break
-
-        return current
-
-
 class ConfigLoader(object):
     def __init__(self, config):
         self._config = config
@@ -143,7 +136,6 @@ class ConfigLoader(object):
         d.update(data)
         return d
 
-    # TODO: All uses should pass in {stage, workspace, port} where possible
     def _resolve_conditional(self, conditional, keywords):
         condition_type = conditional["type"]
         if condition_type == "boolean":
@@ -163,8 +155,9 @@ class ConfigLoader(object):
             raise ValueError("Unsupported conditional type: {}".format(condition_type))
 
     def _load_port(self, node, port_type, port_name, port_config):
-        port = Port(port_type, port_name, multi=port_config.get("multi", False))
-        node.add_port(port)
+        return node.add_port(
+            port_type, port_name, multi=port_config.get("multi", False)
+        )
 
     def _load_workspace(self, workspace_node, workspace_name, workspace_data):
         workspace = DataNode(
@@ -189,7 +182,7 @@ class ConfigLoader(object):
             for conditional in condition_data["conditions"]:
                 if not self._resolve_conditional(
                     conditional,
-                    {"workspace": workspace_node, "stage": workspace_node.parent},
+                    {"workspace": workspace_node, "stage": workspace_node.parent()},
                 ):
                     break
             else:
@@ -208,7 +201,7 @@ class ConfigLoader(object):
 
     # Creates an entity node and all it's contained workspaces. Does not create
     # connections.
-    def create_stage_node(self, type, name, data, parent):
+    def create_stage_node(self, type, name, data, parent=None):
         config = self._config["stages"][type]
         metadata = self._merge_metadata(config.get("data", {}), data)
 
@@ -223,13 +216,13 @@ class ConfigLoader(object):
     def _iter_source_nodes(self, port, connection_data):
         connection_type = connection_data.get("type")
         if connection_type == "internal":
-            yield port.node.parent
+            yield port.node().parent()
         elif connection_type == "foreach":
             foreach_data = connection_data["foreach"]
             keywords = {
                 "port": port,
-                "workspace": port.node,
-                "stage": port.node.parent,
+                "workspace": port.node(),
+                "stage": port.node().parent(),
             }
             for item in exp_parser.parse(foreach_data["loop"], keywords):
                 keywords["item"] = item
@@ -279,6 +272,40 @@ class ConfigLoader(object):
         return connections
 
 
+class Graph(object):
+    def __init__(self):
+        self._connections = set()
+        self._nodes = set()
+
+    def add_connection(self, connection):
+        total = len(self._connections)
+        self._connections.add(connection)
+        return len(self._connections) != total
+
+    def add_node(self, node):
+        total = len(self._nodes)
+        self._nodes.add(node)
+        return len(self._nodes) != total
+
+    def iter_connections(self):
+        yield from self._connections
+
+    def iter_nodes(self):
+        yield from self._nodes
+
+    def connected(self, port):
+        for connection in self._connections:
+            if connection.source() == port:
+                yield connection.target()
+            elif connection.target() == port:
+                yield connection.source()
+
+    def node(self, name, type=None):
+        for node in self._nodes:
+            if node.name() == name and (type is None or type == node.type()):
+                return node
+
+
 if __name__ == "__main__":
     import yaml
 
@@ -291,8 +318,8 @@ if __name__ == "__main__":
         def __init__(self, asset):
             self.asset = asset
 
-    graph = Graph("pipeline")
-    project = loader.create_stage_node("project", "project", {}, graph.root())
+    root = DataNode("root", "pipeline")
+    project = loader.create_stage_node("project", "project", {}, root)
     assetA = loader.create_stage_node("asset", "assetA", {}, project)
     assetB = loader.create_stage_node(
         "asset", "assetB", {"is_rigged": {"type": bool, "value": True}}, project
@@ -309,22 +336,34 @@ if __name__ == "__main__":
         for c in n.children():
             print_tree(c, level=level + 1)
 
-    print_tree(graph.root())
+    print_tree(root)
 
     def path(port):
         p = [port.name()]
-        n = port.node
+        n = port.node()
         while n:
             p.append(n.name())
-            n = n.parent
+            n = n.parent()
         return ".".join(p[::-1])
 
-    def print_connection(connection):
-        print("{} -> {}".format(path(connection.source()), path(connection.target())))
+    def format_connection(connection):
+        return "{} -> {}".format(path(connection.source()), path(connection.target()))
 
-    # project_c = loader.create_connections(project)
-    # assetA_c = loader.create_connections(assetA)
-    # assetB_c = loader.create_connections(assetB)
-    shot_c = loader.create_connections(shot)
-    for connection in shot_c:
-        print_connection(connection)
+    g = Graph()
+    for node in (project, assetA, assetB, shot):
+        g.add_node(node)
+        for c in loader.create_connections(node):
+            if not g.add_connection(c):
+                print("Failed to add:", format_connection(c))
+
+    print("=" * 80)
+    for c in sorted(
+        g._connections, key=lambda con: con.source().node().parent().name()
+    ):
+        print(format_connection(c))
+    print("=" * 80)
+
+    n = g.node("assetA")
+    print(n)
+    for port in g.connected(n.child("model").port("output", "model")):
+        print(path(port))
