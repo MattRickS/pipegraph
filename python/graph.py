@@ -1,5 +1,4 @@
 import copy
-import re
 
 import expression as exp_parser
 
@@ -305,9 +304,20 @@ if __name__ == "__main__":
 
     print_tree(graph.root())
 
+    def path(port):
+        p = [port.name()]
+        n = port.node
+        while n:
+            p.append(n.name())
+            n = n.parent
+        return ".".join(p[::-1])
+
+    def print_connection(connection):
+        print("{} -> {}".format(path(connection.source()), path(connection.target())))
+
     # project_c = loader.create_connections(project)
     # assetA_c = loader.create_connections(assetA)
     # assetB_c = loader.create_connections(assetB)
     shot_c = loader.create_connections(shot)
     for connection in shot_c:
-        print(connection.source(), connection.target())
+        print_connection(connection)
