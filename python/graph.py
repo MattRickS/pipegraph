@@ -100,8 +100,7 @@ class DataNode(Node):
         return self._metadata[field]
 
     def __getitem__(self, item):
-        # TODO: Access "value" directly when using getitem
-        return self.metadata(item)
+        return self.metadata(item)["value"]
 
 
 class Graph(object):
