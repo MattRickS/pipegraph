@@ -166,11 +166,11 @@ class ConfigLoader(object):
         port = Port(port_type, port_name, multi=port_config.get("multi", False))
         node.add_port(port)
 
-    def _load_workspace(self, node, workspace_name, workspace_data):
+    def _load_workspace(self, workspace_node, workspace_name, workspace_data):
         workspace = DataNode(
             "workspace",
             workspace_name,
-            parent=node,
+            parent=workspace_node,
             metadata=workspace_data.get("data", {}),
         )
         for port_type, port_name, port_config in self._iter_port_configs(
@@ -178,44 +178,47 @@ class ConfigLoader(object):
         ):
             self._load_port(workspace, port_type, port_name, port_config)
 
-    def _iter_port_configs(self, node, config):
-        for input_name, input_data in config.get("inputs", {}).items():
+    def _iter_port_configs(self, workspace_node, workspace_config):
+        for input_name, input_data in workspace_config.get("inputs", {}).items():
             yield "input", input_name, input_data
 
-        for output_name, output_data in config.get("outputs", {}).items():
+        for output_name, output_data in workspace_config.get("outputs", {}).items():
             yield "output", output_name, output_data
 
-        for condition_data in config.get("conditional", []):
+        for condition_data in workspace_config.get("conditional", []):
             for conditional in condition_data["conditions"]:
-                if not self._resolve_conditional(conditional, {"this": node}):
+                if not self._resolve_conditional(
+                    conditional,
+                    {"workspace": workspace_node, "stage": workspace_node.parent},
+                ):
                     break
             else:
-                yield from self._iter_port_configs(node, condition_data)
+                yield from self._iter_port_configs(workspace_node, condition_data)
 
-    def _iter_workspace_configs(self, node, config):
-        for workspace_name, workspace_data in config["workspaces"].items():
+    def _iter_workspace_configs(self, stage_node, stage_config):
+        for workspace_name, workspace_data in stage_config["workspaces"].items():
             yield workspace_name, workspace_data
 
-        for condition_data in config.get("conditional", []):
+        for condition_data in stage_config.get("conditional", []):
             for conditional in condition_data["conditions"]:
-                if not self._resolve_conditional(conditional, {"this": node}):
+                if not self._resolve_conditional(conditional, {"stage": stage_node}):
                     break
             else:
-                yield from self._iter_workspace_configs(node, condition_data)
+                yield from self._iter_workspace_configs(stage_node, condition_data)
 
     # Creates an entity node and all it's contained workspaces. Does not create
     # connections.
-    def create_entity_node(self, type, name, data, parent):
+    def create_stage_node(self, type, name, data, parent):
         config = self._config["nodes"][type]
         metadata = self._merge_metadata(config.get("data", {}), data)
 
-        node = DataNode(type, name, parent=parent, metadata=metadata)
+        stage_node = DataNode(type, name, parent=parent, metadata=metadata)
         for workspace_name, workspace_config in self._iter_workspace_configs(
-            node, config
+            stage_node, config
         ):
-            self._load_workspace(node, workspace_name, workspace_config)
+            self._load_workspace(stage_node, workspace_name, workspace_config)
 
-        return node
+        return stage_node
 
     def _iter_source_nodes(self, port, connection_data):
         connection_type = connection_data.get("type")
@@ -223,8 +226,13 @@ class ConfigLoader(object):
             yield port.node.parent
         elif connection_type == "foreach":
             foreach_data = connection_data["foreach"]
-            for item in exp_parser.parse(foreach_data["expression"], {"this": port}):
-                keywords = {"item": item}
+            keywords = {
+                "port": port,
+                "workspace": port.node,
+                "stage": port.node.parent,
+            }
+            for item in exp_parser.parse(foreach_data["loop"], keywords):
+                keywords["item"] = item
                 conditions = foreach_data.get("conditions", [])
                 if all(
                     self._resolve_conditional(conditional, keywords)
@@ -258,14 +266,14 @@ class ConfigLoader(object):
 
     # Creates all the connections the configuration defines for the workspaces
     # inside the node. Cannot be given a workspace node directly.
-    def create_connections(self, node):
-        config = self._config["nodes"][node.type()]
+    def create_connections(self, stage_node):
+        config = self._config["nodes"][stage_node.type()]
         connections = []
         for workspace_name, workspace_config in self._iter_workspace_configs(
-            node, config
+            stage_node, config
         ):
             connections.extend(
-                self._load_connections(node, workspace_name, workspace_config)
+                self._load_connections(stage_node, workspace_name, workspace_config)
             )
 
         return connections
@@ -284,12 +292,12 @@ if __name__ == "__main__":
             self.asset = asset
 
     graph = Graph("pipeline")
-    project = loader.create_entity_node("project", "project", {}, graph.root())
-    assetA = loader.create_entity_node("asset", "assetA", {}, project)
-    assetB = loader.create_entity_node(
+    project = loader.create_stage_node("project", "project", {}, graph.root())
+    assetA = loader.create_stage_node("asset", "assetA", {}, project)
+    assetB = loader.create_stage_node(
         "asset", "assetB", {"is_rigged": {"type": bool, "value": True}}, project
     )
-    shot = loader.create_entity_node(
+    shot = loader.create_stage_node(
         "shot",
         "shotA",
         {"instances": {"type": "list", "value": [Instance(assetA), Instance(assetB)]}},

@@ -15,7 +15,7 @@ nodes:
         conditional:
           - conditions:
             - type: boolean
-              source: "this.parent[is_rigged]"
+              source: "stage[is_rigged]"
             outputs:
               blendshape: {}
               animGeo: {}
@@ -52,7 +52,7 @@ nodes:
     conditional:
       - conditions:
         - type: boolean
-          source: "this[is_rigged]"
+          source: "stage[is_rigged]"
         workspaces:
           rig:
             inputs:
@@ -93,8 +93,7 @@ nodes:
               port_type: "output"
               port_name: "model"
               foreach:
-                # port -> workspace -> entity
-                expression: "this.node.parent[instances]"
+                loop: "stage[instances]"
                 item: "item.asset"
                 conditions:
                 - type: "boolean"
@@ -108,7 +107,7 @@ nodes:
               port_type: "output"
               port_name: "rig"
               foreach:
-                expression: "this.node.parent[instances]"
+                loop: "stage[instances]"
                 item: "item.asset"
                 conditions:
                 - type: "boolean"
@@ -151,7 +150,7 @@ nodes:
               port_type: "output"
               port_name: "material"
               foreach:
-                expression: "this.node.parent[instances]"
+                loop: "stage[instances]"
                 item: "item.asset"
         outputs:
           renders: {}
