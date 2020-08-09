@@ -1,4 +1,4 @@
-nodes:
+stages:
   project:
     workspaces: {}
   asset:
@@ -28,7 +28,7 @@ nodes:
               port_name: "model"
               port_type: "output"
         outputs:
-          textures: {}
+          textures: {multi: True, variation: ["passname"]}
           model: {}
       surf:
         inputs:
@@ -116,7 +116,7 @@ nodes:
           cameraCache: {}
           cameraCurves: {}
           layout: {}
-          animation: {multi: True}
+          animation: {multi: True, variation: ["instance"]}
       lighting:
         inputs:
           # Shot level publishes

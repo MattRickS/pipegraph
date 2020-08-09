@@ -209,7 +209,7 @@ class ConfigLoader(object):
     # Creates an entity node and all it's contained workspaces. Does not create
     # connections.
     def create_stage_node(self, type, name, data, parent):
-        config = self._config["nodes"][type]
+        config = self._config["stages"][type]
         metadata = self._merge_metadata(config.get("data", {}), data)
 
         stage_node = DataNode(type, name, parent=parent, metadata=metadata)
@@ -267,7 +267,7 @@ class ConfigLoader(object):
     # Creates all the connections the configuration defines for the workspaces
     # inside the node. Cannot be given a workspace node directly.
     def create_connections(self, stage_node):
-        config = self._config["nodes"][stage_node.type()]
+        config = self._config["stages"][stage_node.type()]
         connections = []
         for workspace_name, workspace_config in self._iter_workspace_configs(
             stage_node, config
