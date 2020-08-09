@@ -1,0 +1,158 @@
+nodes:
+  project:
+    workspaces: {}
+  asset:
+    data:
+      is_rigged:
+        type: bool
+        value: False
+    workspaces:
+      model:
+        inputs: {}
+        outputs:
+          model: {}
+          review: {}
+        conditional:
+          - conditions:
+            - type: boolean
+              source: "this.parent[is_rigged][value]"
+            outputs:
+              blendshape: {}
+              animGeo: {}
+      tex:
+        inputs:
+          model:
+            connections:
+            - type: "internal"
+              workspace: "model"
+              port_name: "model"
+              port_type: "output"
+        outputs:
+          textures: {}
+          model: {}
+      surf:
+        inputs:
+          textures:
+            multi: True
+            connections:
+            - type: internal
+              workspace: "tex"
+              port_name: "textures"
+              port_type: "output"
+          model:
+            connections:
+            - type: internal
+              workspace: "model"
+              port_name: "model"
+              port_type: "output"
+        outputs:
+          material: {}
+          render: {}
+          review: {}
+    conditional:
+      - conditions:
+        - type: boolean
+          source: "this[is_rigged][value]"
+        workspaces:
+          rig:
+            inputs:
+              animGeo:
+                connections:
+                - type: "internal"
+                  workspace: "model"
+                  port_name: "animGeo"
+                  port_type: "output"
+              blendshape:
+                connections:
+                - type: "internal"
+                  workspace: "model"
+                  port_name: "blendshape"
+                  port_type: "output"
+              model:
+                connections:
+                - type: "internal"
+                  workspace: "model"
+                  port_name: "model"
+                  port_type: "output"
+            outputs:
+              rig: {}
+  shot:
+    data:
+      # When an asset is assigned, a single default instance is created
+      instances:
+        type: list
+        value: []
+    workspaces:
+      layout:
+        inputs:
+          model:
+            multi: True
+            connections:
+            - type: "foreach"
+              workspace: "model"
+              port_type: "output"
+              port_name: "model"
+              foreach:
+                # port -> workspace -> entity
+                expression: "this.node.parent[instances][value]"
+                item: "item.asset"
+                conditions:
+                - type: "boolean"
+                  source: "item.asset[is_rigged][value]"
+                  invert: True
+          rig:
+            multi: True
+            connections:
+            - type: "foreach"
+              workspace: "rig"
+              port_type: "output"
+              port_name: "rig"
+              foreach:
+                expression: "this.node.parent[instances][value]"
+                item: "item.asset"
+                conditions:
+                - type: "boolean"
+                  source: "item.asset[is_rigged][value]"
+        outputs:
+          cameraCache: {}
+          cameraCurves: {}
+          layout: {}
+          animation: {multi: True}
+      lighting:
+        inputs:
+          # Shot level publishes
+          camera:
+            connections:
+            - type: internal
+              workspace: "layout"
+              port_type: "output"
+              port_name: "cameraCache"
+          layout:
+            connections:
+            - type: internal
+              workspace: "layout"
+              port_type: "output"
+              port_name: "layout"
+          # # Shot level instance publishes
+          # animation:
+          #   multi: True
+          #   connections:
+          #   # TODO: types of connection, eg, priority?
+          #   - type: internal
+          #     workspace: "anim"
+          #     port_type: "output"
+          #     port_name: "animation"
+          # Asset level publishes
+          material:
+            multi: True
+            connections:
+            - type: "foreach"
+              workspace: "surf"
+              port_type: "output"
+              port_name: "material"
+              foreach:
+                expression: "this.node.parent[instances][value]"
+                item: "item.asset"
+        outputs:
+          renders: {}
+          review: {}
