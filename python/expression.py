@@ -1,5 +1,7 @@
 import re
 
+import exceptions
+
 
 def parse(expression, keywords):
     current = None
@@ -11,41 +13,29 @@ def parse(expression, keywords):
         #   [word]
         match = re.match(r"((\.)|(\[))?(\w+)(?(3)\])", expression[index:])
         if match is None:
-            raise ValueError("Malformed expression")
+            raise exceptions.InvalidExpression("Malformed expression")
 
         accessor, _, _, value = match.groups()
-        if current is None:
-            current = keywords[value]
-        elif accessor == ".":
-            current = getattr(current, value)
-        elif accessor == "[":
-            current = current[value]
-        elif accessor is None:
-            raise ValueError("Missing accessor for keyword: {}".format(value))
-        else:
-            raise ValueError("Unknown accessor: {}".format(accessor))
+        try:
+            if current is None:
+                current = keywords[value]
+            elif accessor == ".":
+                current = getattr(current, value)
+            elif accessor == "[":
+                current = current[value]
+            elif accessor is None:
+                raise exceptions.InvalidExpression(
+                    "Missing accessor for keyword: {}".format(value)
+                )
+            else:
+                raise exceptions.InvalidExpression(
+                    "Unknown accessor: {}".format(accessor)
+                )
+        except (KeyError, TypeError, AttributeError) as e:
+            raise exceptions.MissingData(
+                "Failed to resolve expression: {}".format(e)
+            ) from e
 
         index += match.end()
 
     return current
-
-
-if __name__ == "__main__":
-
-    class A(object):
-        parent = {"is_rigged": {"value": True}}
-
-    a = "this[instances]"
-    keywords = {"this": {"instances": []}}
-    result = parse(a, keywords)
-    print("RESULT:", result)
-
-    b = "this.parent[is_rigged][value]"
-    keywords = {"this": A}
-    result = parse(b, keywords)
-    print("RESULT:", result)
-
-    c = "this.parent[is_rigged]value"
-    keywords = {"this": A}
-    result = parse(c, keywords)
-    print("RESULT:", result)
