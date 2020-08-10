@@ -4,16 +4,18 @@ import expression as exp_parser
 
 
 class Port(object):
-    def __init__(self, node, type, name, multi=False):
+    def __init__(self, type, name, multi=False, metadata=None):
         self._type = type
         self._name = name
-        self._node = node
+        self._node = None
         self._is_multi = multi
+        self.metadata = metadata or {}
+
+    def __getitem__(self, item):
+        return self.metadata[item]["value"]
 
     def __repr__(self):
-        return "{s.__class__.__name__}({s._node!r}, {s._type!r}, {s._name!r})".format(
-            s=self
-        )
+        return "{s.__class__.__name__}({s._type!r}, {s._name!r})".format(s=self)
 
     def name(self):
         return self._name
@@ -29,15 +31,19 @@ class Port(object):
 
 
 class Node(object):
-    def __init__(self, type, name, parent=None):
+    def __init__(self, type, name, parent=None, metadata=None):
         self._type = type
         self._name = name
         self._parent = parent
+        self.metadata = metadata or {}
         self._children = []
         self._ports = []
 
         if parent is not None:
             self.set_parent(parent)
+
+    def __getitem__(self, item):
+        return self.metadata[item]["value"]
 
     def __repr__(self):
         return "{s.__class__.__name__}({s._type!r}, {s._name!r})".format(s=self)
@@ -69,10 +75,12 @@ class Node(object):
     def parent(self):
         return self._parent
 
-    def add_port(self, type, name, multi=False):
-        port = Port(self, type, name, multi=multi)
+    def add_port(self, port):
+        if port.node() is not None:
+            raise ValueError("Port already belongs to a node")
+
+        port._node = self
         self._ports.append(port)
-        return port
 
     def port(self, type, name):
         for port in self._ports:
@@ -88,9 +96,13 @@ class Node(object):
 
 
 class Connection(object):
-    def __init__(self, source, target):
+    def __init__(self, source, target, metadata=None):
         self._source = source
         self._target = target
+        self.metadata = metadata or {}
+
+    def __getitem__(self, item):
+        return self.metadata[item]["value"]
 
     def __repr__(self):
         return "{}({!r}, {!r})".format(
@@ -112,18 +124,6 @@ class Connection(object):
 
     def target(self):
         return self._target
-
-
-class DataNode(Node):
-    def __init__(self, type, name, parent=None, metadata=None):
-        super().__init__(type, name, parent=parent)
-        self._metadata = metadata or {}
-
-    def metadata(self, field):
-        return self._metadata[field]
-
-    def __getitem__(self, item):
-        return self.metadata(item)["value"]
 
 
 class ConfigLoader(object):
@@ -155,12 +155,17 @@ class ConfigLoader(object):
             raise ValueError("Unsupported conditional type: {}".format(condition_type))
 
     def _load_port(self, node, port_type, port_name, port_config):
-        return node.add_port(
-            port_type, port_name, multi=port_config.get("multi", False)
+        port = Port(
+            port_type,
+            port_name,
+            multi=port_config.get("multi", False),
+            metadata=port_config.get("data", {}),
         )
+        node.add_port(port)
+        return port
 
     def _load_workspace(self, workspace_node, workspace_name, workspace_data):
-        workspace = DataNode(
+        workspace = Node(
             "workspace",
             workspace_name,
             parent=workspace_node,
@@ -205,7 +210,7 @@ class ConfigLoader(object):
         config = self._config["stages"][type]
         metadata = self._merge_metadata(config.get("data", {}), data)
 
-        stage_node = DataNode(type, name, parent=parent, metadata=metadata)
+        stage_node = Node(type, name, parent=parent, metadata=metadata)
         for workspace_name, workspace_config in self._iter_workspace_configs(
             stage_node, config
         ):
@@ -247,6 +252,7 @@ class ConfigLoader(object):
                 ws_name = connection_data["workspace"]
                 port_type = connection_data["port_type"]
                 port_name = connection_data["port_name"]
+                metadata = connection_data.get("data", {})
 
                 target_port = workspace.port("input", input_name)
 
@@ -254,8 +260,11 @@ class ConfigLoader(object):
                     target_port, connection_data
                 ):
                     source_port = source_node.child(ws_name).port(port_type, port_name)
-                    # TODO: Validate "multi" status of ports against number of connections
-                    yield Connection(source_port, target_port)
+                    # Add a copy of the metadata to each connection so that it's
+                    # not shared
+                    yield Connection(
+                        source_port, target_port, metadata=copy.deepcopy(metadata)
+                    )
 
     # Creates all the connections the configuration defines for the workspaces
     # inside the node. Cannot be given a workspace node directly.
@@ -333,7 +342,7 @@ if __name__ == "__main__":
         def __init__(self, asset):
             self.asset = asset
 
-    root = DataNode("root", "pipeline")
+    root = Node("root", "pipeline")
     project = loader.create_stage_node("project", "project", {}, root)
     assetA = loader.create_stage_node("asset", "assetA", {}, project)
     assetB = loader.create_stage_node(
@@ -362,7 +371,9 @@ if __name__ == "__main__":
         return ".".join(p[::-1])
 
     def format_connection(connection):
-        return "{} -> {}".format(path(connection.source()), path(connection.target()))
+        return "{} -> {} | {}".format(
+            path(connection.source()), path(connection.target()), connection.metadata
+        )
 
     g = Graph()
     for node in (project, assetA, assetB, shot):
@@ -380,5 +391,5 @@ if __name__ == "__main__":
 
     n = g.node("assetA")
     print(n)
-    for port in g.connected(n.child("model").port("output", "model")):
+    for port in g.connected(n.child("modeling").port("output", "model")):
         print(path(port))
