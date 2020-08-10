@@ -74,8 +74,7 @@ stages:
               rig: {}
   shot:
     data:
-      # When an asset is assigned, a single default instance is created
-      instances:
+      assets:
         type: list
         value: []
     workspaces:
@@ -93,11 +92,10 @@ stages:
                   type: int
                   value: 1
               foreach:
-                loop: stage[instances]
-                item: item.asset
+                loop: stage[assets]
                 conditions:
                 - type: boolean
-                  source: item.asset[is_rigged]
+                  source: item[is_rigged]
                   invert: True
             - type: foreach
               workspace: modeling
@@ -108,11 +106,10 @@ stages:
                   type: int
                   value: 2
               foreach:
-                loop: stage[instances]
-                item: item.asset
+                loop: stage[assets]
                 conditions:
                 - type: boolean
-                  source: item.asset[is_rigged]
+                  source: item[is_rigged]
                   invert: True
           rig:
             multi: True
@@ -122,11 +119,10 @@ stages:
               port_type: output
               port_name: rig
               foreach:
-                loop: stage[instances]
-                item: item.asset
+                loop: stage[assets]
                 conditions:
                 - type: boolean
-                  source: item.asset[is_rigged]
+                  source: item[is_rigged]
         output:
           cameraCache: {}
           cameraCurves: {}
@@ -165,8 +161,7 @@ stages:
               port_type: output
               port_name: material
               foreach:
-                loop: stage[instances]
-                item: item.asset
+                loop: stage[assets]
         output:
           renders: {}
           review: {}

@@ -344,10 +344,6 @@ if __name__ == "__main__":
 
     loader = ConfigLoader(config)
 
-    class Instance(object):
-        def __init__(self, asset):
-            self.asset = asset
-
     root = Node("root", "pipeline")
     project = loader.create_stage_node("project", "project", {}, root)
     assetA = loader.create_stage_node("asset", "assetA", {}, project)
@@ -357,7 +353,7 @@ if __name__ == "__main__":
     shot = loader.create_stage_node(
         "shot",
         "shotA",
-        {"instances": {"type": "list", "value": [Instance(assetA), Instance(assetB)]}},
+        {"assets": {"type": "list", "value": [assetA, assetB]}},
         project,
     )
 
