@@ -1,5 +1,6 @@
 import copy
 
+import constants
 import expression as exp_parser
 
 
@@ -177,11 +178,15 @@ class ConfigLoader(object):
             self._load_port(workspace, port_type, port_name, port_config)
 
     def _iter_port_configs(self, workspace_node, workspace_config):
-        for input_name, input_data in workspace_config.get("inputs", {}).items():
-            yield "input", input_name, input_data
+        for input_name, input_data in workspace_config.get(
+            constants.PortType.Input, {}
+        ).items():
+            yield constants.PortType.Input, input_name, input_data
 
-        for output_name, output_data in workspace_config.get("outputs", {}).items():
-            yield "output", output_name, output_data
+        for output_name, output_data in workspace_config.get(
+            constants.PortType.Output, {}
+        ).items():
+            yield constants.PortType.Output, output_name, output_data
 
         for condition_data in workspace_config.get("conditional", []):
             for conditional in condition_data["conditions"]:
@@ -245,7 +250,7 @@ class ConfigLoader(object):
         for port_type, input_name, input_config in self._iter_port_configs(
             workspace, workspace_data
         ):
-            if port_type != "input":
+            if port_type != constants.PortType.Input:
                 continue
 
             for connection_data in input_config.get("connections", []):
@@ -254,7 +259,7 @@ class ConfigLoader(object):
                 port_name = connection_data["port_name"]
                 metadata = connection_data.get("data", {})
 
-                target_port = workspace.port("input", input_name)
+                target_port = workspace.port(constants.PortType.Input, input_name)
 
                 for source_node in self._iter_source_nodes(
                     target_port, connection_data
@@ -290,7 +295,7 @@ class Graph(object):
         # Input ports only accept a single connection unless declared as "multi"
         # If a connection exists for a non-multi Input port, raise an error
         single_inputs = [
-            p.type() == "input" and not p.is_multi()
+            p.type() == constants.PortType.Input and not p.is_multi()
             for p in (connection.source(), connection.target())
         ]
         if single_inputs:
@@ -391,5 +396,7 @@ if __name__ == "__main__":
 
     n = g.node("assetA")
     print(n)
-    for port in g.connected(n.child("modeling").port("output", "model")):
+    for port in g.connected(
+        n.child("modeling").port(constants.PortType.Output, "model")
+    ):
         print(path(port))

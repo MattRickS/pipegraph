@@ -8,26 +8,26 @@ stages:
         value: False
     workspaces:
       modeling:
-        inputs: {}
-        outputs:
+        input: {}
+        output:
           model: {}
           review: {}
         conditional:
           - conditions:
             - type: boolean
               source: "stage[is_rigged]"
-            outputs:
+            output:
               blendshape: {}
               animGeo: {}
       surfacing:
-        inputs:
+        input:
           model:
             connections:
             - type: internal
               workspace: "modeling"
               port_name: "model"
               port_type: "output"
-        outputs:
+        output:
           texture: {multi: True, variation: ["passname"]}
           material: {}
           model: {}
@@ -39,7 +39,7 @@ stages:
           source: "stage[is_rigged]"
         workspaces:
           rig:
-            inputs:
+            input:
               animGeo:
                 connections:
                 - type: "internal"
@@ -70,7 +70,7 @@ stages:
                     priority:
                       type: int
                       value: 2
-            outputs:
+            output:
               rig: {}
   shot:
     data:
@@ -80,7 +80,7 @@ stages:
         value: []
     workspaces:
       layout:
-        inputs:
+        input:
           model:
             multi: True
             connections:
@@ -127,13 +127,13 @@ stages:
                 conditions:
                 - type: "boolean"
                   source: "item.asset[is_rigged]"
-        outputs:
+        output:
           cameraCache: {}
           cameraCurves: {}
           layout: {}
           animation: {multi: True, variation: ["instance"]}
       lighting:
-        inputs:
+        input:
           # Shot level publishes
           camera:
             connections:
@@ -167,6 +167,6 @@ stages:
               foreach:
                 loop: "stage[instances]"
                 item: "item.asset"
-        outputs:
+        output:
           renders: {}
           review: {}
