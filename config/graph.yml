@@ -7,7 +7,7 @@ stages:
         type: bool
         value: False
     workspaces:
-      model:
+      modeling:
         inputs: {}
         outputs:
           model: {}
@@ -19,34 +19,18 @@ stages:
             outputs:
               blendshape: {}
               animGeo: {}
-      tex:
+      surfacing:
         inputs:
           model:
             connections:
-            - type: "internal"
-              workspace: "model"
+            - type: internal
+              workspace: "modeling"
               port_name: "model"
               port_type: "output"
         outputs:
-          textures: {multi: True, variation: ["passname"]}
-          model: {}
-      surf:
-        inputs:
-          textures:
-            multi: True
-            connections:
-            - type: internal
-              workspace: "tex"
-              port_name: "textures"
-              port_type: "output"
-          model:
-            connections:
-            - type: internal
-              workspace: "model"
-              port_name: "model"
-              port_type: "output"
-        outputs:
+          texture: {multi: True, variation: ["passname"]}
           material: {}
+          model: {}
           render: {}
           review: {}
     conditional:
@@ -59,21 +43,33 @@ stages:
               animGeo:
                 connections:
                 - type: "internal"
-                  workspace: "model"
+                  workspace: "modeling"
                   port_name: "animGeo"
                   port_type: "output"
               blendshape:
                 connections:
                 - type: "internal"
-                  workspace: "model"
+                  workspace: "modeling"
                   port_name: "blendshape"
                   port_type: "output"
               model:
                 connections:
                 - type: "internal"
-                  workspace: "model"
+                  workspace: "surfacing"
                   port_name: "model"
                   port_type: "output"
+                  data:
+                    priority:
+                      type: int
+                      value: 1
+                - type: "internal"
+                  workspace: "modeling"
+                  port_name: "model"
+                  port_type: "output"
+                  data:
+                    priority:
+                      type: int
+                      value: 2
             outputs:
               rig: {}
   shot:
@@ -89,9 +85,28 @@ stages:
             multi: True
             connections:
             - type: "foreach"
-              workspace: "model"
+              workspace: "surfacing"
               port_type: "output"
               port_name: "model"
+              data:
+                priority:
+                  type: int
+                  value: 1
+              foreach:
+                loop: "stage[instances]"
+                item: "item.asset"
+                conditions:
+                - type: "boolean"
+                  source: "item.asset[is_rigged]"
+                  invert: True
+            - type: "foreach"
+              workspace: "modeling"
+              port_type: "output"
+              port_name: "model"
+              data:
+                priority:
+                  type: int
+                  value: 2
               foreach:
                 loop: "stage[instances]"
                 item: "item.asset"
@@ -146,7 +161,7 @@ stages:
             multi: True
             connections:
             - type: "foreach"
-              workspace: "surf"
+              workspace: "surfacing"
               port_type: "output"
               port_name: "material"
               foreach:
