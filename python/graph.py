@@ -278,6 +278,21 @@ class Graph(object):
         self._nodes = set()
 
     def add_connection(self, connection):
+        # Input ports only accept a single connection unless declared as "multi"
+        # If a connection exists for a non-multi Input port, raise an error
+        single_inputs = [
+            p.type() == "input" and not p.is_multi()
+            for p in (connection.source(), connection.target())
+        ]
+        if single_inputs:
+            for con in self._connections:
+                if any(p == con.source() or p == con.target() for p in single_inputs):
+                    raise ValueError(
+                        "Multiple connections for single-connection port: {}".format(
+                            connection
+                        )
+                    )
+
         total = len(self._connections)
         self._connections.add(connection)
         return len(self._connections) != total
