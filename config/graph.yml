@@ -15,7 +15,7 @@ stages:
         conditional:
           - conditions:
             - type: boolean
-              source: "stage[is_rigged]"
+              source: stage[is_rigged]
             output:
               blendshape: {}
               animGeo: {}
@@ -24,11 +24,11 @@ stages:
           model:
             connections:
             - type: internal
-              workspace: "modeling"
-              port_name: "model"
-              port_type: "output"
+              workspace: modeling
+              port_name: model
+              port_type: output
         output:
-          texture: {multi: True, variation: ["passname"]}
+          texture: {multi: True, variation: [passname]}
           material: {}
           model: {}
           render: {}
@@ -36,36 +36,36 @@ stages:
     conditional:
       - conditions:
         - type: boolean
-          source: "stage[is_rigged]"
+          source: stage[is_rigged]
         workspaces:
           rig:
             input:
               animGeo:
                 connections:
-                - type: "internal"
-                  workspace: "modeling"
-                  port_name: "animGeo"
-                  port_type: "output"
+                - type: internal
+                  workspace: modeling
+                  port_name: animGeo
+                  port_type: output
               blendshape:
                 connections:
-                - type: "internal"
-                  workspace: "modeling"
-                  port_name: "blendshape"
-                  port_type: "output"
+                - type: internal
+                  workspace: modeling
+                  port_name: blendshape
+                  port_type: output
               model:
                 connections:
-                - type: "internal"
-                  workspace: "surfacing"
-                  port_name: "model"
-                  port_type: "output"
+                - type: internal
+                  workspace: surfacing
+                  port_name: model
+                  port_type: output
                   data:
                     priority:
                       type: int
                       value: 1
-                - type: "internal"
-                  workspace: "modeling"
-                  port_name: "model"
-                  port_type: "output"
+                - type: internal
+                  workspace: modeling
+                  port_name: model
+                  port_type: output
                   data:
                     priority:
                       type: int
@@ -84,89 +84,89 @@ stages:
           model:
             multi: True
             connections:
-            - type: "foreach"
-              workspace: "surfacing"
-              port_type: "output"
-              port_name: "model"
+            - type: foreach
+              workspace: surfacing
+              port_type: output
+              port_name: model
               data:
                 priority:
                   type: int
                   value: 1
               foreach:
-                loop: "stage[instances]"
-                item: "item.asset"
+                loop: stage[instances]
+                item: item.asset
                 conditions:
-                - type: "boolean"
-                  source: "item.asset[is_rigged]"
+                - type: boolean
+                  source: item.asset[is_rigged]
                   invert: True
-            - type: "foreach"
-              workspace: "modeling"
-              port_type: "output"
-              port_name: "model"
+            - type: foreach
+              workspace: modeling
+              port_type: output
+              port_name: model
               data:
                 priority:
                   type: int
                   value: 2
               foreach:
-                loop: "stage[instances]"
-                item: "item.asset"
+                loop: stage[instances]
+                item: item.asset
                 conditions:
-                - type: "boolean"
-                  source: "item.asset[is_rigged]"
+                - type: boolean
+                  source: item.asset[is_rigged]
                   invert: True
           rig:
             multi: True
             connections:
-            - type: "foreach"
-              workspace: "rig"
-              port_type: "output"
-              port_name: "rig"
+            - type: foreach
+              workspace: rig
+              port_type: output
+              port_name: rig
               foreach:
-                loop: "stage[instances]"
-                item: "item.asset"
+                loop: stage[instances]
+                item: item.asset
                 conditions:
-                - type: "boolean"
-                  source: "item.asset[is_rigged]"
+                - type: boolean
+                  source: item.asset[is_rigged]
         output:
           cameraCache: {}
           cameraCurves: {}
           layout: {}
-          animation: {multi: True, variation: ["instance"]}
+          animation: {multi: True, variation: [instance]}
       lighting:
         input:
           # Shot level publishes
           camera:
             connections:
             - type: internal
-              workspace: "layout"
-              port_type: "output"
-              port_name: "cameraCache"
+              workspace: layout
+              port_type: output
+              port_name: cameraCache
           layout:
             connections:
             - type: internal
-              workspace: "layout"
-              port_type: "output"
-              port_name: "layout"
+              workspace: layout
+              port_type: output
+              port_name: layout
           # # Shot level instance publishes
           # animation:
           #   multi: True
           #   connections:
           #   # TODO: types of connection, eg, priority?
           #   - type: internal
-          #     workspace: "anim"
-          #     port_type: "output"
-          #     port_name: "animation"
+          #     workspace: anim
+          #     port_type: output
+          #     port_name: animation
           # Asset level publishes
           material:
             multi: True
             connections:
-            - type: "foreach"
-              workspace: "surfacing"
-              port_type: "output"
-              port_name: "material"
+            - type: foreach
+              workspace: surfacing
+              port_type: output
+              port_name: material
               foreach:
-                loop: "stage[instances]"
-                item: "item.asset"
+                loop: stage[instances]
+                item: item.asset
         output:
           renders: {}
           review: {}
