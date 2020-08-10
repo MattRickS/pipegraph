@@ -229,6 +229,7 @@ class ConfigLoader(object):
             yield port.node().parent()
         elif connection_type == "foreach":
             foreach_data = connection_data["foreach"]
+            item_expression = foreach_data.get("item", "item")
             keywords = {
                 "port": port,
                 "workspace": port.node(),
@@ -241,7 +242,7 @@ class ConfigLoader(object):
                     self._resolve_conditional(conditional, keywords)
                     for conditional in conditions
                 ):
-                    yield exp_parser.parse(foreach_data["item"], keywords)
+                    yield exp_parser.parse(item_expression, keywords)
         else:
             raise ValueError("Unknown connection type: {}".format(connection_type))
 
