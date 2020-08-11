@@ -5,18 +5,22 @@ import expression as exp_parser
 
 
 class Port(object):
-    def __init__(self, type, name, multi=False, metadata=None):
+    def __init__(self, type, name, multi=False, promoted=False, metadata=None):
         self._type = type
         self._name = name
         self._node = None
         self._is_multi = multi
+        self._is_promoted = promoted
         self.metadata = metadata or {}
 
     def __getitem__(self, item):
         return self.metadata[item]["value"]
 
     def __repr__(self):
-        return "{s.__class__.__name__}({s._type!r}, {s._name!r})".format(s=self)
+        return (
+            "{s.__class__.__name__}({s._type!r}, {s._name!r}, "
+            "multi={s._is_multi}, metadata={s.metadata})".format(s=self)
+        )
 
     def name(self):
         return self._name
@@ -27,8 +31,23 @@ class Port(object):
     def is_multi(self):
         return self._is_multi
 
+    def is_promoted(self):
+        return self._is_promoted
+
     def node(self):
         return self._node
+
+
+class PromotedPort(Port):
+    def __init__(self, type, name, multi=False, promoted=False, metadata=None):
+        super().__init__(type, name, multi=multi, promoted=promoted, metadata=metadata)
+        self._internal = []
+
+    def internal(self):
+        return self._internal[:]
+
+    def share(self, port):
+        self._internal.append(port)
 
 
 class Node(object):
@@ -160,6 +179,7 @@ class ConfigLoader(object):
             port_type,
             port_name,
             multi=port_config.get("multi", False),
+            promoted=port_config.get("promote", False),
             metadata=port_config.get("data", {}),
         )
         node.add_port(port)
@@ -176,6 +196,8 @@ class ConfigLoader(object):
             workspace, workspace_data
         ):
             self._load_port(workspace, port_type, port_name, port_config)
+
+        return workspace
 
     def _iter_port_configs(self, workspace_node, workspace_config):
         for input_name, input_data in workspace_config.get(
@@ -219,7 +241,25 @@ class ConfigLoader(object):
         for workspace_name, workspace_config in self._iter_workspace_configs(
             stage_node, config
         ):
-            self._load_workspace(stage_node, workspace_name, workspace_config)
+            workspace = self._load_workspace(
+                stage_node, workspace_name, workspace_config
+            )
+            for port in workspace.ports():
+                if not port.is_promoted():
+                    continue
+
+                existing = stage_node.port(port.type(), port.name())
+                if existing:
+                    existing.share(port)
+                else:
+                    promoted_port = PromotedPort(
+                        port.type(),
+                        port.name(),
+                        multi=port.is_multi(),
+                        metadata=copy.deepcopy(port.metadata),
+                    )
+                    promoted_port.share(port)
+                    stage_node.add_port(promoted_port)
 
         return stage_node
 
@@ -256,7 +296,7 @@ class ConfigLoader(object):
 
             for connection_data in input_config.get("connections", []):
                 ws_name = connection_data["workspace"]
-                port_type = connection_data["port_type"]
+                port_type = connection_data.get("port_type", constants.PortType.Output)
                 port_name = connection_data["port_name"]
                 metadata = connection_data.get("data", {})
 
@@ -338,6 +378,44 @@ class Graph(object):
 
 if __name__ == "__main__":
     import yaml
+
+    # TODO: What if ports had a flag to promote themselves as a stage port.
+    # Promotions with the same name are merged together, or an optional keyword
+    # could be used to separate them, eg, promote_name: "surfModel"
+    # promote keyword is an implicit connection from the port to the parent port
+    # connection types are stage (external/promoted) and workspace (internal)
+    # How would this work with nested stages, eg, sequence/shot? Connection types
+    # need to be more explicit.
+    #   asset
+    #     workspace:
+    #       modeling:
+    #         output:
+    #           animGeo: {promote: True}
+    #           blendshape: {}
+    #           model: {promote: True}
+    #       surfacing:
+    #         output:
+    #           model: {promote: True}
+    #   shot:
+    #     workspace:
+    #       layout:
+    #         input:
+    #           model:
+    #             promote: True
+    #             connections:
+    #             - type: stage
+    #               port_type: promoted (input? output?)
+    #               port_name: model
+    # Shared promotion is tricky - both would need to define the same data, eg,
+    # same datatype / number of connections / etc...
+    # Could enforce it strictly, but how? Why force users to configure the same
+    # data twice if it's shared?
+    # Parent-child structures are already problematic. Every node must be a
+    # separate entry in the graph, the parent-child relationship is only for
+    # API navigation and not for visual representation.
+
+    # TODO: Either have a metadata object (with getitem/setitem accessors) that
+    # is used for subdicts, or abandon the "type" key and use isinstance in the UI
 
     with open("/home/mshaw/git/python/pipegraph/config/graph.yml") as f:
         config = yaml.safe_load(f)

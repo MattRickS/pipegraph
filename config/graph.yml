@@ -10,7 +10,7 @@ stages:
       modeling:
         input: {}
         output:
-          model: {}
+          model: {promote: True}
           review: {}
         conditional:
           - conditions:
@@ -18,7 +18,7 @@ stages:
               source: stage[is_rigged]
             output:
               blendshape: {}
-              animGeo: {}
+              animGeo: {promote: True}
       surfacing:
         input:
           model:
@@ -26,12 +26,17 @@ stages:
             - type: internal
               workspace: modeling
               port_name: model
-              port_type: output
         output:
-          texture: {multi: True, variation: [passname]}
-          material: {}
-          model: {}
-          render: {}
+          texture:
+            multi: True
+            data:
+              variation:
+                type: list
+                value:
+                - type: str
+                  value: passname
+          material: {promote: True}
+          model: {promote: True}
           review: {}
     conditional:
       - conditions:
@@ -45,19 +50,16 @@ stages:
                 - type: internal
                   workspace: modeling
                   port_name: animGeo
-                  port_type: output
               blendshape:
                 connections:
                 - type: internal
                   workspace: modeling
                   port_name: blendshape
-                  port_type: output
               model:
                 connections:
                 - type: internal
                   workspace: surfacing
                   port_name: model
-                  port_type: output
                   data:
                     priority:
                       type: int
@@ -65,13 +67,12 @@ stages:
                 - type: internal
                   workspace: modeling
                   port_name: model
-                  port_type: output
                   data:
                     priority:
                       type: int
                       value: 2
             output:
-              rig: {}
+              rig: {promote: True}
   shot:
     data:
       assets:
@@ -81,11 +82,11 @@ stages:
       layout:
         input:
           model:
+            promote: True
             multi: True
             connections:
             - type: foreach
               workspace: surfacing
-              port_type: output
               port_name: model
               data:
                 priority:
@@ -99,7 +100,6 @@ stages:
                   invert: True
             - type: foreach
               workspace: modeling
-              port_type: output
               port_name: model
               data:
                 priority:
@@ -112,11 +112,11 @@ stages:
                   source: item[is_rigged]
                   invert: True
           rig:
+            promote: True
             multi: True
             connections:
             - type: foreach
               workspace: rig
-              port_type: output
               port_name: rig
               foreach:
                 loop: stage[assets]
@@ -127,7 +127,14 @@ stages:
           cameraCache: {}
           cameraCurves: {}
           layout: {}
-          animation: {multi: True, variation: [instance]}
+          animation:
+              multi: True
+              data:
+                variation:
+                  type: list
+                  value:
+                    type: str
+                    value: instance
       lighting:
         input:
           # Shot level publishes
@@ -135,13 +142,11 @@ stages:
             connections:
             - type: internal
               workspace: layout
-              port_type: output
               port_name: cameraCache
           layout:
             connections:
             - type: internal
               workspace: layout
-              port_type: output
               port_name: layout
           # # Shot level instance publishes
           # animation:
@@ -150,7 +155,7 @@ stages:
           #   # TODO: types of connection, eg, priority?
           #   - type: internal
           #     workspace: anim
-          #     port_type: output
+          
           #     port_name: animation
           # Asset level publishes
           material:
@@ -158,10 +163,9 @@ stages:
             connections:
             - type: foreach
               workspace: surfacing
-              port_type: output
               port_name: material
               foreach:
                 loop: stage[assets]
         output:
-          renders: {}
+          renders: {promote: True}
           review: {}
