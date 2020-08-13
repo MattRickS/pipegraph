@@ -2,148 +2,7 @@ import copy
 
 import constants
 import expression as exp_parser
-
-
-class Port(object):
-    def __init__(self, type, name, multi=False, promoted=False, metadata=None):
-        self._type = type
-        self._name = name
-        self._node = None
-        self._is_multi = multi
-        self._is_promoted = promoted
-        self.metadata = metadata or {}
-
-    def __getitem__(self, item):
-        return self.metadata[item]["value"]
-
-    def __repr__(self):
-        return (
-            "{s.__class__.__name__}({s._type!r}, {s._name!r}, "
-            "multi={s._is_multi}, metadata={s.metadata})".format(s=self)
-        )
-
-    def name(self):
-        return self._name
-
-    def type(self):
-        return self._type
-
-    def is_multi(self):
-        return self._is_multi
-
-    def is_promoted(self):
-        return self._is_promoted
-
-    def node(self):
-        return self._node
-
-
-class PromotedPort(Port):
-    def __init__(self, type, name, multi=False, promoted=False, metadata=None):
-        super().__init__(type, name, multi=multi, promoted=promoted, metadata=metadata)
-        self._internal = []
-
-    def internal(self):
-        return self._internal[:]
-
-    def share(self, port):
-        self._internal.append(port)
-
-
-class Node(object):
-    def __init__(self, type, name, parent=None, metadata=None):
-        self._type = type
-        self._name = name
-        self._parent = parent
-        self.metadata = metadata or {}
-        self._children = []
-        self._ports = []
-
-        if parent is not None:
-            self.set_parent(parent)
-
-    def __getitem__(self, item):
-        return self.metadata[item]["value"]
-
-    def __repr__(self):
-        return "{s.__class__.__name__}({s._type!r}, {s._name!r})".format(s=self)
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, self.__class__)
-            and self.type() == other.type()
-            and self.name() == other.name()
-        )
-
-    def __hash__(self):
-        return hash((self.type(), self.name()))
-
-    def name(self):
-        return self._name
-
-    def type(self):
-        return self._type
-
-    def child(self, name):
-        for child in self._children:
-            if child.name() == name:
-                return child
-
-    def children(self):
-        return self._children[:]
-
-    def parent(self):
-        return self._parent
-
-    def add_port(self, port):
-        if port.node() is not None:
-            raise ValueError("Port already belongs to a node")
-
-        port._node = self
-        self._ports.append(port)
-
-    def port(self, type, name):
-        for port in self._ports:
-            if port.type() == type and port.name() == name:
-                return port
-
-    def ports(self):
-        return self._ports[:]
-
-    def set_parent(self, parent):
-        parent._children.append(self)
-        self._parent = parent
-
-
-class Connection(object):
-    def __init__(self, source, target, metadata=None):
-        self._source = source
-        self._target = target
-        self.metadata = metadata or {}
-
-    def __getitem__(self, item):
-        return self.metadata[item]["value"]
-
-    def __repr__(self):
-        return "{}({!r}, {!r})".format(
-            self.__class__.__name__, self.source(), self.target()
-        )
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, Connection)
-            and self.source() == other.source()
-            and self.target() == other.target()
-        )
-
-    def __hash__(self):
-        return hash((self.source(), self.target()))
-
-    def source(self):
-        return self._source
-
-    def target(self):
-        return self._target
+import nodes
 
 
 class ConfigLoader(object):
@@ -175,7 +34,7 @@ class ConfigLoader(object):
             raise ValueError("Unsupported conditional type: {}".format(condition_type))
 
     def _load_port(self, node, port_type, port_name, port_config):
-        port = Port(
+        port = nodes.Port(
             port_type,
             port_name,
             multi=port_config.get("multi", False),
@@ -186,7 +45,7 @@ class ConfigLoader(object):
         return port
 
     def _load_workspace(self, workspace_node, workspace_name, workspace_data):
-        workspace = Node(
+        workspace = nodes.Node(
             "workspace",
             workspace_name,
             parent=workspace_node,
@@ -237,7 +96,7 @@ class ConfigLoader(object):
         config = self._config["stages"][type]
         metadata = self._merge_metadata(config.get("data", {}), data)
 
-        stage_node = Node(type, name, parent=parent, metadata=metadata)
+        stage_node = nodes.Node(type, name, parent=parent, metadata=metadata)
         for workspace_name, workspace_config in self._iter_workspace_configs(
             stage_node, config
         ):
@@ -252,7 +111,7 @@ class ConfigLoader(object):
                 if existing:
                     existing.share(port)
                 else:
-                    promoted_port = PromotedPort(
+                    promoted_port = nodes.PromotedPort(
                         port.type(),
                         port.name(),
                         multi=port.is_multi(),
@@ -308,7 +167,7 @@ class ConfigLoader(object):
                     source_port = source_node.child(ws_name).port(port_type, port_name)
                     # Add a copy of the metadata to each connection so that it's
                     # not shared
-                    yield Connection(
+                    yield nodes.Connection(
                         source_port, target_port, metadata=copy.deepcopy(metadata)
                     )
 
@@ -326,54 +185,9 @@ class ConfigLoader(object):
 
         return connections
 
-
-class Graph(object):
-    def __init__(self):
-        self._connections = set()
-        self._nodes = set()
-
-    def add_connection(self, connection):
-        # Input ports only accept a single connection unless declared as "multi"
-        # If a connection exists for a non-multi Input port, raise an error
-        single_inputs = [
-            p.type() == constants.PortType.Input and not p.is_multi()
-            for p in (connection.source(), connection.target())
-        ]
-        if single_inputs:
-            for con in self._connections:
-                if any(p == con.source() or p == con.target() for p in single_inputs):
-                    raise ValueError(
-                        "Multiple connections for single-connection port: {}".format(
-                            connection
-                        )
-                    )
-
-        total = len(self._connections)
-        self._connections.add(connection)
-        return len(self._connections) != total
-
-    def add_node(self, node):
-        total = len(self._nodes)
-        self._nodes.add(node)
-        return len(self._nodes) != total
-
-    def iter_connections(self):
-        yield from self._connections
-
-    def iter_nodes(self):
-        yield from self._nodes
-
-    def connected(self, port):
-        for connection in self._connections:
-            if connection.source() == port:
-                yield connection.target()
-            elif connection.target() == port:
-                yield connection.source()
-
-    def node(self, name, type=None):
-        for node in self._nodes:
-            if node.name() == name and (type is None or type == node.type()):
-                return node
+    def metadata(self, stage_type):
+        metadata = self._config["stages"][stage_type]["data"]
+        return copy.deepcopy(metadata or {})
 
 
 if __name__ == "__main__":
@@ -422,7 +236,7 @@ if __name__ == "__main__":
 
     loader = ConfigLoader(config)
 
-    root = Node("root", "pipeline")
+    root = nodes.Node("root", "pipeline")
     project = loader.create_stage_node("project", "project", {}, root)
     assetA = loader.create_stage_node("asset", "assetA", {}, project)
     assetB = loader.create_stage_node(
@@ -441,37 +255,3 @@ if __name__ == "__main__":
             print_tree(c, level=level + 1)
 
     print_tree(root)
-
-    def path(port):
-        p = [port.name()]
-        n = port.node()
-        while n:
-            p.append(n.name())
-            n = n.parent()
-        return ".".join(p[::-1])
-
-    def format_connection(connection):
-        return "{} -> {} | {}".format(
-            path(connection.source()), path(connection.target()), connection.metadata
-        )
-
-    g = Graph()
-    for node in (project, assetA, assetB, shot):
-        g.add_node(node)
-        for c in loader.create_connections(node):
-            if not g.add_connection(c):
-                print("Failed to add:", format_connection(c))
-
-    print("=" * 80)
-    for c in sorted(
-        g._connections, key=lambda con: con.source().node().parent().name()
-    ):
-        print(format_connection(c))
-    print("=" * 80)
-
-    n = g.node("assetA")
-    print(n)
-    for port in g.connected(
-        n.child("modeling").port(constants.PortType.Output, "model")
-    ):
-        print(path(port))
