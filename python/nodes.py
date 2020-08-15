@@ -10,11 +10,25 @@ class Port(object):
     def __getitem__(self, item):
         return self.metadata[item]["value"]
 
+    def __str__(self):
+        return "{s.__class__.__name__}({s._type}, {s._name})".format(s=self)
+
     def __repr__(self):
         return (
-            "{s.__class__.__name__}({s._type!r}, {s._name!r}, "
-            "multi={s._is_multi}, metadata={s.metadata})".format(s=self)
+            "{s.__class__.__name__}({s._type!r}, {s._name!r}, multi={s._is_multi}, "
+            "promoted={s._is_promoted}, metadata={s.metadata})".format(s=self)
         )
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, Port)
+            and self.node() == other.node()
+            and self.type() == other.type()
+            and self.name() == other.name()
+        )
+
+    def __hash__(self):
+        return hash((self.node(), self.type(), self.name()))
 
     def name(self):
         return self._name
@@ -138,3 +152,11 @@ class Connection(object):
 
     def target(self):
         return self._target
+
+    def connected(self, port):
+        if port == self.source():
+            return self.target()
+        elif port == self.target():
+            return self.source()
+        else:
+            raise ValueError("Invalid port")
