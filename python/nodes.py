@@ -124,17 +124,20 @@ class Node(object):
 
 
 class Connection(object):
-    def __init__(self, source, target, metadata=None):
+    def __init__(self, source, target, group=None, internal=True, metadata=None):
         self._source = source
         self._target = target
+        self._internal = internal
+        self.group = group
         self.metadata = metadata or {}
 
     def __getitem__(self, item):
         return self.metadata[item]["value"]
 
     def __repr__(self):
-        return "{}({!r}, {!r})".format(
-            self.__class__.__name__, self.source(), self.target()
+        return (
+            "{s.__class__.__name__}({s._source!r}, {s._target!r}, group={s.group!r}, "
+            "internal={s._internal!r}, metadata={s.metadata!r})".format(s=self)
         )
 
     def __eq__(self, other):
@@ -146,6 +149,9 @@ class Connection(object):
 
     def __hash__(self):
         return hash((self.source(), self.target()))
+
+    def is_internal(self):
+        return self._internal
 
     def source(self):
         return self._source

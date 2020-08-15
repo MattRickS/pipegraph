@@ -112,36 +112,78 @@ class ConfigLoader(object):
                     existing.share(port)
                 else:
                     promoted_port = nodes.PromotedPort(
-                        port.type(),
-                        port.name(),
-                        multi=port.is_multi(),
-                        metadata=copy.deepcopy(port.metadata),
+                        port.type(), port.name(), multi=port.is_multi()
                     )
                     promoted_port.share(port)
                     stage_node.add_port(promoted_port)
 
         return stage_node
 
-    def _iter_source_nodes(self, port, connection_data):
+    def _resolve_group(self, connection_data, keywords):
+        group_expr = connection_data.get("group")
+        return exp_parser.parse(group_expr, keywords) if group_expr else None
+
+    def _resolve_source_port(self, source_node, connection_data):
+        ws_name = connection_data.get("workspace")
+        port_type = connection_data.get("port_type", constants.PortType.Output)
+        port_name = connection_data["port_name"]
+        if ws_name:
+            source_node = source_node.child(ws_name)
+        return source_node.port(port_type, port_name)
+
+    def _resolve_internal_connection(self, target_port, connection_data):
+        metadata = connection_data.get("data", {})
+        source_node = target_port.node().parent()
+        source_port = self._resolve_source_port(source_node, connection_data)
+        group = self._resolve_group(
+            connection_data, {"source": source_port, "target": target_port}
+        )
+        return nodes.Connection(
+            source_port,
+            target_port,
+            group=group,
+            internal=True,
+            metadata=copy.deepcopy(metadata),
+        )
+
+    def _resolve_external_connection(self, target_port, connection_data):
+        metadata = connection_data.get("data", {})
+        foreach_data = connection_data["foreach"]
+        item_expression = foreach_data.get("item", "item")
+        keywords = {
+            "port": target_port,
+            "workspace": target_port.node(),
+            "stage": target_port.node().parent(),
+        }
+        for item in exp_parser.parse(foreach_data["loop"], keywords):
+            keywords["item"] = item
+            conditions = foreach_data.get("conditions", [])
+            if all(
+                self._resolve_conditional(conditional, keywords)
+                for conditional in conditions
+            ):
+                # Add a copy of the metadata to each connection so that it's
+                # not shared
+                source_node = exp_parser.parse(item_expression, keywords)
+                source_port = self._resolve_source_port(source_node, connection_data)
+                group = self._resolve_group(
+                    foreach_data,
+                    {"source": source_port, "target": target_port, "item": item},
+                )
+                yield nodes.Connection(
+                    source_port,
+                    target_port,
+                    group=group,
+                    internal=False,
+                    metadata=copy.deepcopy(metadata),
+                )
+
+    def _resolve_connections(self, target_port, connection_data):
         connection_type = connection_data.get("type")
         if connection_type == "internal":
-            yield port.node().parent()
-        elif connection_type == "foreach":
-            foreach_data = connection_data["foreach"]
-            item_expression = foreach_data.get("item", "item")
-            keywords = {
-                "port": port,
-                "workspace": port.node(),
-                "stage": port.node().parent(),
-            }
-            for item in exp_parser.parse(foreach_data["loop"], keywords):
-                keywords["item"] = item
-                conditions = foreach_data.get("conditions", [])
-                if all(
-                    self._resolve_conditional(conditional, keywords)
-                    for conditional in conditions
-                ):
-                    yield exp_parser.parse(item_expression, keywords)
+            yield self._resolve_internal_connection(target_port, connection_data)
+        elif connection_type == "external":
+            yield from self._resolve_external_connection(target_port, connection_data)
         else:
             raise ValueError("Unknown connection type: {}".format(connection_type))
 
@@ -150,26 +192,13 @@ class ConfigLoader(object):
         for port_type, input_name, input_config in self._iter_port_configs(
             workspace, workspace_data
         ):
+            # Only input ports define connections
             if port_type != constants.PortType.Input:
                 continue
 
+            target_port = workspace.port(port_type, input_name)
             for connection_data in input_config.get("connections", []):
-                ws_name = connection_data["workspace"]
-                port_type = connection_data.get("port_type", constants.PortType.Output)
-                port_name = connection_data["port_name"]
-                metadata = connection_data.get("data", {})
-
-                target_port = workspace.port(constants.PortType.Input, input_name)
-
-                for source_node in self._iter_source_nodes(
-                    target_port, connection_data
-                ):
-                    source_port = source_node.child(ws_name).port(port_type, port_name)
-                    # Add a copy of the metadata to each connection so that it's
-                    # not shared
-                    yield nodes.Connection(
-                        source_port, target_port, metadata=copy.deepcopy(metadata)
-                    )
+                yield from self._resolve_connections(target_port, connection_data)
 
     # Creates all the connections the configuration defines for the workspaces
     # inside the node. Cannot be given a workspace node directly.
@@ -236,6 +265,11 @@ if __name__ == "__main__":
 
     loader = ConfigLoader(config)
 
+    class Instance(object):
+        def __init__(self, name, asset):
+            self.name = name
+            self.asset = asset
+
     root = nodes.Node("root", "pipeline")
     project = loader.create_stage_node("project", "project", {}, root)
     assetA = loader.create_stage_node("asset", "assetA", {}, project)
@@ -245,7 +279,16 @@ if __name__ == "__main__":
     shot = loader.create_stage_node(
         "shot",
         "shotA",
-        {"assets": {"type": "list", "value": [assetA, assetB]}},
+        {
+            "animated_instances": {
+                "type": "list",
+                "value": [Instance("assetA_1", assetA), Instance("assetA_2", assetA)],
+            },
+            "static_instances": {
+                "type": "list",
+                "value": [Instance("assetB_1", assetB)],
+            },
+        },
         project,
     )
 

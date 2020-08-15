@@ -74,8 +74,12 @@ stages:
             output:
               rig: {promote: True}
   shot:
+    # TODO: just define animated_instances and static_instances?
     data:
-      assets:
+      animated_instances:
+        type: list
+        value: []
+      static_instances:
         type: list
         value: []
     workspaces:
@@ -85,59 +89,33 @@ stages:
             promote: True
             multi: True
             connections:
-            - type: foreach
-              workspace: surfacing
+            - type: external
               port_name: model
-              data:
-                priority:
-                  type: int
-                  value: 1
               foreach:
-                loop: stage[assets]
-                conditions:
-                - type: boolean
-                  source: item[is_rigged]
-                  invert: True
-            - type: foreach
-              workspace: modeling
-              port_name: model
-              data:
-                priority:
-                  type: int
-                  value: 2
-              foreach:
-                loop: stage[assets]
-                conditions:
-                - type: boolean
-                  source: item[is_rigged]
-                  invert: True
+                loop: stage[static_instances]
+                item: item.asset
+                group: item
           rig:
             promote: True
             multi: True
             connections:
-            - type: foreach
-              workspace: rig
+            - type: external
               port_name: rig
               foreach:
-                loop: stage[assets]
-                conditions:
-                - type: boolean
-                  source: item[is_rigged]
+                loop: stage[animated_instances]
+                item: item.asset
+                group: item
         output:
           cameraCache: {}
           cameraCurves: {}
           layout: {}
           animation:
-              multi: True
-              data:
-                variation:
-                  type: list
-                  value:
-                    type: str
-                    value: instance
+              multi: texture
+              foreach:
+                loop: stage[animated_instances]
+                group: item
       lighting:
         input:
-          # Shot level publishes
           camera:
             connections:
             - type: internal
@@ -148,24 +126,15 @@ stages:
             - type: internal
               workspace: layout
               port_name: layout
-          # # Shot level instance publishes
-          # animation:
-          #   multi: True
-          #   connections:
-          #   # TODO: types of connection, eg, priority?
-          #   - type: internal
-          #     workspace: anim
-          
-          #     port_name: animation
-          # Asset level publishes
           material:
             multi: True
             connections:
-            - type: foreach
-              workspace: surfacing
+            - type: external
               port_name: material
               foreach:
-                loop: stage[assets]
+                loop: stage[animated_instances]
+                item: item.asset
+                group: item
         output:
           renders: {promote: True}
           review: {}
