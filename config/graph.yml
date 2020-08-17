@@ -8,87 +8,93 @@ stages:
         value: False
     workspaces:
       modeling:
-        input: {}
-        output:
-          model: {}
-          review: {}
+        ports:
+          input: {}
+          output:
+            model: {}
+            review: {}
         conditional:
           - conditions:
             - type: boolean
               source: stage[is_rigged]
-            output:
-              blendshape: {}
-              animGeo: {}
+            ports:
+              output:
+                blendshape: {}
+                animGeo: {}
       surfacing:
-        input:
-          model:
-            connections:
-            - type: internal
-              workspace: modeling
-              port_name: model
-        output:
-          texture:
-            multi: True
-            data:
-              variation:
-                type: list
-                value:
-                - type: str
-                  value: passname
-          material: {}
-          model: {}
-          review: {}
-    output:
-      model:
-        connections:
-        - type: demoted
-          workspace: modeling
-        - type: demoted
-          workspace: surfacing
-      material:
-        connections:
-        - type: demoted
-          workspace: surfacing
+        ports:
+          input:
+            model:
+              connections:
+              - type: internal
+                workspace: modeling
+                port_name: model
+          output:
+            texture:
+              multi: True
+              data:
+                variation:
+                  type: list
+                  value:
+                  - type: str
+                    value: passname
+            material: {}
+            model: {}
+            review: {}
+    ports:
+      output:
+        model:
+          connections:
+          - type: demoted
+            workspace: modeling
+          - type: demoted
+            workspace: surfacing
+        material:
+          connections:
+          - type: demoted
+            workspace: surfacing
     conditional:
       - conditions:
         - type: boolean
           source: stage[is_rigged]
         workspaces:
           rigging:
-            input:
-              animGeo:
-                connections:
-                - type: internal
-                  workspace: modeling
-                  port_name: animGeo
-              blendshape:
-                connections:
-                - type: internal
-                  workspace: modeling
-                  port_name: blendshape
-              model:
-                connections:
-                - type: internal
-                  workspace: surfacing
-                  port_name: model
-                  data:
-                    priority:
-                      type: int
-                      value: 1
-                - type: internal
-                  workspace: modeling
-                  port_name: model
-                  data:
-                    priority:
-                      type: int
-                      value: 2
-            output:
-              rig: {}
-        output:
-          rig:
-            connections:
-            - type: demoted
-              workspace: rigging
+            ports:
+              input:
+                animGeo:
+                  connections:
+                  - type: internal
+                    workspace: modeling
+                    port_name: animGeo
+                blendshape:
+                  connections:
+                  - type: internal
+                    workspace: modeling
+                    port_name: blendshape
+                model:
+                  connections:
+                  - type: internal
+                    workspace: surfacing
+                    port_name: model
+                    data:
+                      priority:
+                        type: int
+                        value: 1
+                  - type: internal
+                    workspace: modeling
+                    port_name: model
+                    data:
+                      priority:
+                        type: int
+                        value: 2
+              output:
+                rig: {}
+        ports:
+          output:
+            rig:
+              connections:
+              - type: demoted
+                workspace: rigging
   shot:
     data:
       animated_instances:
@@ -99,71 +105,72 @@ stages:
         value: []
     workspaces:
       layout:
-        input:
-          model:
-            multi: True
-            connections:
-            - type: promoted
-          rig:
-            multi: True
-            connections:
-            - type: promoted
-        output:
-          cameraCache: {}
-          cameraCurves: {}
-          layout: {}
-          animation:
-            multi: True
-            foreach:
-              loop: stage[animated_instances]
-              group: item
+        ports:
+          input:
+            model:
+              multi: True
+              connections:
+              - type: promoted
+            rig:
+              multi: True
+              connections:
+              - type: promoted
+          output:
+            cameraCache: {}
+            cameraCurves: {}
+            layout: {}
+            animation:
+              multi: True
+              foreach:
+                loop: stage[animated_instances]
+                group: item
       lighting:
-        input:
-          camera:
-            connections:
-            - type: internal
-              workspace: layout
-              port_name: cameraCache
-          layout:
-            connections:
-            - type: internal
-              workspace: layout
-              port_name: layout
-          material:
-            multi: True
-            connections:
-            - type: promoted
-        output:
-          renders: {}
-          review: {}
-    # TODO: Move ports under a "ports" key similar to workspaces. Will need to be
-    # done for the workspace ports as well.
-    input:
-      model:
-        multi: True
-        connections:
-          - type: external
-            port_name: model
-            foreach:
-              loop: stage[static_instances]
-              item: item.asset
-              group: item
-      rig:
-        multi: True
-        connections:
-          - type: external
-            port_name: rig
-            foreach:
-              loop: stage[animated_instances]
-              item: item.asset
-              group: item
-      material:
-        multi: True
-        connections:
-          - type: external
-            port_name: material
-            foreach:
-              loop: stage[animated_instances]
-              item: item.asset
-              group: item
-    output: {}
+        ports:
+          input:
+            camera:
+              connections:
+              - type: internal
+                workspace: layout
+                port_name: cameraCache
+            layout:
+              connections:
+              - type: internal
+                workspace: layout
+                port_name: layout
+            material:
+              multi: True
+              connections:
+              - type: promoted
+          output:
+            renders: {}
+            review: {}
+    ports:
+      input:
+        model:
+          multi: True
+          connections:
+            - type: external
+              port_name: model
+              foreach:
+                loop: stage[static_instances]
+                item: item.asset
+                group: item
+        rig:
+          multi: True
+          connections:
+            - type: external
+              port_name: rig
+              foreach:
+                loop: stage[animated_instances]
+                item: item.asset
+                group: item
+        material:
+          multi: True
+          connections:
+            - type: external
+              port_name: material
+              foreach:
+                loop: stage[animated_instances]
+                item: item.asset
+                group: item
+      output: {}

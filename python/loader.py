@@ -60,13 +60,9 @@ class ConfigLoader(object):
         return workspace
 
     def _iter_port_configs(self, node, config, keywords):
-        for input_name, input_data in config.get(constants.PortType.Input, {}).items():
-            yield constants.PortType.Input, input_name, input_data
-
-        for output_name, output_data in config.get(
-            constants.PortType.Output, {}
-        ).items():
-            yield constants.PortType.Output, output_name, output_data
+        for port_type, ports in config.get("ports", {}).items():
+            for port_name, port_config in ports.items():
+                yield port_type, port_name, port_config
 
         for condition_data in config.get("conditional", []):
             for conditional in condition_data["conditions"]:
