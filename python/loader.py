@@ -59,18 +59,16 @@ class ConfigLoader(object):
 
         return workspace
 
-    def _iter_port_configs(self, node, workspace_config, keywords):
-        for input_name, input_data in workspace_config.get(
-            constants.PortType.Input, {}
-        ).items():
+    def _iter_port_configs(self, node, config, keywords):
+        for input_name, input_data in config.get(constants.PortType.Input, {}).items():
             yield constants.PortType.Input, input_name, input_data
 
-        for output_name, output_data in workspace_config.get(
+        for output_name, output_data in config.get(
             constants.PortType.Output, {}
         ).items():
             yield constants.PortType.Output, output_name, output_data
 
-        for condition_data in workspace_config.get("conditional", []):
+        for condition_data in config.get("conditional", []):
             for conditional in condition_data["conditions"]:
                 if not self._resolve_conditional(conditional, keywords):
                     break
@@ -138,11 +136,15 @@ class ConfigLoader(object):
         metadata = connection_data.get("data", {})
         foreach_data = connection_data["foreach"]
         item_expression = foreach_data.get("item", "item")
-        keywords = {
-            "port": target_port,
-            "workspace": target_port.node(),
-            "stage": target_port.node().parent(),
-        }
+
+        # TODO: This is a hack fix, should be replaced with more concrete solution
+        keywords = {"port": target_port}
+        node = target_port.node()
+        if node.type() == "workspace":
+            keywords.update(workspace=node, stage=node.parent())
+        else:
+            keywords["stage"] = node
+
         for item in exp_parser.parse(foreach_data["loop"], keywords):
             keywords["item"] = item
             conditions = foreach_data.get("conditions", [])
@@ -187,7 +189,7 @@ class ConfigLoader(object):
         port_name = connection_data.get("port_name", target_port.name())
         port_type = connection_data.get("port_type", target_port.type())
         workspace_name = connection_data["workspace"]
-        workspace = target_port.child(workspace_name)
+        workspace = target_port.node().child(workspace_name)
         source_port = workspace.port(port_type, port_name)
         if source_port is None:
             raise ValueError(
@@ -212,14 +214,11 @@ class ConfigLoader(object):
         else:
             raise ValueError("Unknown connection type: {}".format(connection_type))
 
-    def _load_connections(self, node, workspace_name, workspace_data):
-        workspace = node.child(workspace_name)
+    def _load_connections(self, node, node_config, keywords):
         for port_type, input_name, input_config in self._iter_port_configs(
-            workspace,
-            workspace_data,
-            {"stage": workspace.parent(), "workspace": workspace},
+            node, node_config, keywords,
         ):
-            target_port = workspace.port(port_type, input_name)
+            target_port = node.port(port_type, input_name)
             for connection_data in input_config.get("connections", []):
                 yield from self._resolve_connections(target_port, connection_data)
 
@@ -228,14 +227,21 @@ class ConfigLoader(object):
     def create_connections(self, stage_node):
         config = self._config["stages"][stage_node.type()]
         connections = []
-        # TODO: Load connections from ports
         for workspace_name, workspace_config in self._iter_workspace_configs(
             stage_node, config
         ):
+            workspace = stage_node.child(workspace_name)
             connections.extend(
-                self._load_connections(stage_node, workspace_name, workspace_config)
+                self._load_connections(
+                    workspace,
+                    workspace_config,
+                    {"stage": stage_node, "workspace": workspace},
+                )
             )
 
+        connections.extend(
+            self._load_connections(stage_node, config, {"stage": stage_node})
+        )
         return connections
 
     def metadata(self, stage_type):
