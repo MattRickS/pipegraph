@@ -38,7 +38,6 @@ class ConfigLoader(object):
             port_type,
             port_name,
             multi=port_config.get("multi", False),
-            promoted=port_config.get("promote", False),
             metadata=port_config.get("data", {}),
         )
         node.add_port(port)
@@ -52,13 +51,15 @@ class ConfigLoader(object):
             metadata=workspace_data.get("data", {}),
         )
         for port_type, port_name, port_config in self._iter_port_configs(
-            workspace, workspace_data
+            workspace,
+            workspace_data,
+            {"stage": workspace.parent(), "workspace": workspace},
         ):
             self._load_port(workspace, port_type, port_name, port_config)
 
         return workspace
 
-    def _iter_port_configs(self, workspace_node, workspace_config):
+    def _iter_port_configs(self, node, workspace_config, keywords):
         for input_name, input_data in workspace_config.get(
             constants.PortType.Input, {}
         ).items():
@@ -71,13 +72,10 @@ class ConfigLoader(object):
 
         for condition_data in workspace_config.get("conditional", []):
             for conditional in condition_data["conditions"]:
-                if not self._resolve_conditional(
-                    conditional,
-                    {"workspace": workspace_node, "stage": workspace_node.parent()},
-                ):
+                if not self._resolve_conditional(conditional, keywords):
                     break
             else:
-                yield from self._iter_port_configs(workspace_node, condition_data)
+                yield from self._iter_port_configs(node, condition_data, keywords)
 
     def _iter_workspace_configs(self, stage_node, stage_config):
         for workspace_name, workspace_data in stage_config["workspaces"].items():
@@ -100,22 +98,12 @@ class ConfigLoader(object):
         for workspace_name, workspace_config in self._iter_workspace_configs(
             stage_node, config
         ):
-            workspace = self._load_workspace(
-                stage_node, workspace_name, workspace_config
-            )
-            for port in workspace.ports():
-                if not port.is_promoted():
-                    continue
+            self._load_workspace(stage_node, workspace_name, workspace_config)
 
-                existing = stage_node.port(port.type(), port.name())
-                if existing:
-                    existing.share(port)
-                else:
-                    promoted_port = nodes.PromotedPort(
-                        port.type(), port.name(), multi=port.is_multi()
-                    )
-                    promoted_port.share(port)
-                    stage_node.add_port(promoted_port)
+        for port_type, port_name, port_config in self._iter_port_configs(
+            stage_node, config, {"stage": stage_node}
+        ):
+            self._load_port(stage_node, port_type, port_name, port_config)
 
         return stage_node
 
@@ -178,24 +166,59 @@ class ConfigLoader(object):
                     metadata=copy.deepcopy(metadata),
                 )
 
+    def _resolve_promoted_connection(self, target_port, connection_data):
+        port_name = connection_data.get("port_name", target_port.name())
+        port_type = connection_data.get("port_type", constants.PortType.Input)
+        stage = target_port.node().parent()
+        source_port = stage.port(port_type, port_name)
+        if source_port is None:
+            raise ValueError(
+                "Promoted port does not exist: {}.port({!r}, {!r})".format(
+                    stage.name(), port_type, port_name
+                )
+            )
+
+        group = self._resolve_group(
+            connection_data, {"source": source_port, "target": target_port}
+        )
+        return nodes.Connection(source_port, target_port, group, internal=True)
+
+    def _resolve_demoted_connection(self, target_port, connection_data):
+        port_name = connection_data.get("port_name", target_port.name())
+        port_type = connection_data.get("port_type", target_port.type())
+        workspace_name = connection_data["workspace"]
+        workspace = target_port.child(workspace_name)
+        source_port = workspace.port(port_type, port_name)
+        if source_port is None:
+            raise ValueError(
+                "Demoted port does not exist: {}.{}".format(workspace.name(), port_name)
+            )
+
+        group = self._resolve_group(
+            connection_data, {"source": source_port, "target": target_port}
+        )
+        return nodes.Connection(source_port, target_port, group, internal=True)
+
     def _resolve_connections(self, target_port, connection_data):
         connection_type = connection_data.get("type")
         if connection_type == "internal":
             yield self._resolve_internal_connection(target_port, connection_data)
         elif connection_type == "external":
             yield from self._resolve_external_connection(target_port, connection_data)
+        elif connection_type == "promoted":
+            yield self._resolve_promoted_connection(target_port, connection_data)
+        elif connection_type == "demoted":
+            yield self._resolve_demoted_connection(target_port, connection_data)
         else:
             raise ValueError("Unknown connection type: {}".format(connection_type))
 
     def _load_connections(self, node, workspace_name, workspace_data):
         workspace = node.child(workspace_name)
         for port_type, input_name, input_config in self._iter_port_configs(
-            workspace, workspace_data
+            workspace,
+            workspace_data,
+            {"stage": workspace.parent(), "workspace": workspace},
         ):
-            # Only input ports define connections
-            if port_type != constants.PortType.Input:
-                continue
-
             target_port = workspace.port(port_type, input_name)
             for connection_data in input_config.get("connections", []):
                 yield from self._resolve_connections(target_port, connection_data)
@@ -205,6 +228,7 @@ class ConfigLoader(object):
     def create_connections(self, stage_node):
         config = self._config["stages"][stage_node.type()]
         connections = []
+        # TODO: Load connections from ports
         for workspace_name, workspace_config in self._iter_workspace_configs(
             stage_node, config
         ):

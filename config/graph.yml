@@ -10,7 +10,7 @@ stages:
       modeling:
         input: {}
         output:
-          model: {promote: True}
+          model: {}
           review: {}
         conditional:
           - conditions:
@@ -18,7 +18,7 @@ stages:
               source: stage[is_rigged]
             output:
               blendshape: {}
-              animGeo: {promote: True}
+              animGeo: {}
       surfacing:
         input:
           model:
@@ -35,15 +35,26 @@ stages:
                 value:
                 - type: str
                   value: passname
-          material: {promote: True}
-          model: {promote: True}
+          material: {}
+          model: {}
           review: {}
+    output:
+      model:
+        connections:
+        - type: demoted
+          workspace: modeling
+        - type: demoted
+          workspace: surfacing
+      material:
+        connections:
+        - type: demoted
+          workspace: surfacing
     conditional:
       - conditions:
         - type: boolean
           source: stage[is_rigged]
         workspaces:
-          rig:
+          rigging:
             input:
               animGeo:
                 connections:
@@ -72,9 +83,13 @@ stages:
                       type: int
                       value: 2
             output:
-              rig: {promote: True}
+              rig: {}
+        output:
+          rig:
+            connections:
+            - type: demoted
+              workspace: rigging
   shot:
-    # TODO: just define animated_instances and static_instances?
     data:
       animated_instances:
         type: list
@@ -86,34 +101,22 @@ stages:
       layout:
         input:
           model:
-            promote: True
             multi: True
             connections:
-            - type: external
-              port_name: model
-              foreach:
-                loop: stage[static_instances]
-                item: item.asset
-                group: item
+            - type: promoted
           rig:
-            promote: True
             multi: True
             connections:
-            - type: external
-              port_name: rig
-              foreach:
-                loop: stage[animated_instances]
-                item: item.asset
-                group: item
+            - type: promoted
         output:
           cameraCache: {}
           cameraCurves: {}
           layout: {}
           animation:
-              multi: texture
-              foreach:
-                loop: stage[animated_instances]
-                group: item
+            multi: True
+            foreach:
+              loop: stage[animated_instances]
+              group: item
       lighting:
         input:
           camera:
@@ -129,12 +132,38 @@ stages:
           material:
             multi: True
             connections:
-            - type: external
-              port_name: material
-              foreach:
-                loop: stage[animated_instances]
-                item: item.asset
-                group: item
+            - type: promoted
         output:
-          renders: {promote: True}
+          renders: {}
           review: {}
+    # TODO: Move ports under a "ports" key similar to workspaces. Will need to be
+    # done for the workspace ports as well.
+    input:
+      model:
+        multi: True
+        connections:
+          - type: external
+            port_name: model
+            foreach:
+              loop: stage[static_instances]
+              item: item.asset
+              group: item
+      rig:
+        multi: True
+        connections:
+          - type: external
+            port_name: rig
+            foreach:
+              loop: stage[animated_instances]
+              item: item.asset
+              group: item
+      material:
+        multi: True
+        connections:
+          - type: external
+            port_name: material
+            foreach:
+              loop: stage[animated_instances]
+              item: item.asset
+              group: item
+    output: {}
