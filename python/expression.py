@@ -33,7 +33,9 @@ def parse(expression, keywords):
                 )
         except (KeyError, TypeError, AttributeError) as e:
             raise exceptions.MissingData(
-                "Failed to resolve expression: {}".format(e)
+                "Failed to resolve expression {} with keywords {}: {}".format(
+                    expression, keywords, e
+                )
             ) from e
 
         index += match.end()
