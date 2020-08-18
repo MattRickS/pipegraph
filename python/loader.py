@@ -128,19 +128,12 @@ class ConfigLoader(object):
             metadata=copy.deepcopy(metadata),
         )
 
-    def _resolve_external_connection(self, target_port, connection_data):
+    def _resolve_external_connection(self, target_port, connection_data, keywords):
         metadata = connection_data.get("data", {})
         foreach_data = connection_data["foreach"]
         item_expression = foreach_data.get("item", "item")
 
-        # TODO: This is a hack fix, should be replaced with more concrete solution
-        keywords = {"port": target_port}
-        node = target_port.node()
-        if node.type() == "workspace":
-            keywords.update(workspace=node, stage=node.parent())
-        else:
-            keywords["stage"] = node
-
+        keywords["port"] = target_port
         for item in exp_parser.parse(foreach_data["loop"], keywords):
             keywords["item"] = item
             conditions = foreach_data.get("conditions", [])
@@ -197,12 +190,14 @@ class ConfigLoader(object):
         )
         return nodes.Connection(source_port, target_port, group, internal=True)
 
-    def _resolve_connections(self, target_port, connection_data):
+    def _resolve_connections(self, target_port, connection_data, keywords):
         connection_type = connection_data.get("type")
         if connection_type == "internal":
             yield self._resolve_internal_connection(target_port, connection_data)
         elif connection_type == "external":
-            yield from self._resolve_external_connection(target_port, connection_data)
+            yield from self._resolve_external_connection(
+                target_port, connection_data, keywords
+            )
         elif connection_type == "promoted":
             yield self._resolve_promoted_connection(target_port, connection_data)
         elif connection_type == "demoted":
@@ -216,7 +211,9 @@ class ConfigLoader(object):
         ):
             target_port = node.port(port_type, input_name)
             for connection_data in input_config.get("connections", []):
-                yield from self._resolve_connections(target_port, connection_data)
+                yield from self._resolve_connections(
+                    target_port, connection_data, keywords
+                )
 
     # Creates all the connections the configuration defines for the workspaces
     # inside the node. Cannot be given a workspace node directly.
