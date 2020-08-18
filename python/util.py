@@ -1,9 +1,37 @@
+import enum
 import re
 
 import exceptions
 
 
-def parse(expression, keywords):
+class Subtype(enum.Enum):
+    Boolean = "bool"
+    Dict = "dict"
+    Integer = "int"
+    Float = "float"
+    List = "list"
+    Mixed = "mixed"
+    String = "str"
+
+
+def collapse_meta(meta):
+    value = meta["value"]
+    if meta["type"] == "dict" and meta["subtype"] == Subtype.Mixed.value:
+        value = collapse_metadata_dict(value)
+    elif meta["type"] == "list" and meta["subtype"] == Subtype.Mixed.value:
+        value = collapse_metadata_list(value)
+    return value
+
+
+def collapse_metadata_list(metadata):
+    return [collapse_meta(meta) for meta in metadata]
+
+
+def collapse_metadata_dict(metadata):
+    return {key: collapse_meta(meta) for key, meta in metadata.items()}
+
+
+def parse_expression(expression, keywords):
     current = None
     index = 0
     while index < len(expression):
@@ -41,3 +69,23 @@ def parse(expression, keywords):
         index += match.end()
 
     return current
+
+
+if __name__ == "__main__":
+    m = {
+        "one": {
+            "type": "dict",
+            "value": {
+                "two": {"type": "int", "value": 1},
+                "three": {"type": "str", "value": "word"},
+            },
+        },
+        "four": {
+            "type": "list",
+            "value": [
+                {"type": "bool", "value": True},
+                {"type": "dict", "value": {"key": {"type": "float", "value": 1.0}}},
+            ],
+        },
+    }
+    print(collapse_metadata_dict(m))

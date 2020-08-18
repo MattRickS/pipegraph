@@ -1,8 +1,8 @@
 import copy
 
 import constants
-import expression as exp_parser
 import nodes
+import util
 
 
 class ConfigLoader(object):
@@ -18,12 +18,12 @@ class ConfigLoader(object):
     def _resolve_conditional(self, conditional, keywords):
         condition_type = conditional["type"]
         if condition_type == "boolean":
-            value = bool(exp_parser.parse(conditional["source"], keywords))
+            value = bool(util.parse_expression(conditional["source"], keywords))
             return not value if conditional.get("invert") else value
         elif condition_type == "comparison":
             comparison = conditional["comparison"]
-            source = exp_parser.parse(conditional["source"], keywords)
-            target = exp_parser.parse(conditional["target"], keywords)
+            source = util.parse_expression(conditional["source"], keywords)
+            target = util.parse_expression(conditional["target"], keywords)
             if comparison == "in":
                 return source in target
             else:
@@ -103,7 +103,7 @@ class ConfigLoader(object):
 
     def _resolve_group(self, connection_data, keywords):
         group_expr = connection_data.get("group")
-        return exp_parser.parse(group_expr, keywords) if group_expr else None
+        return util.parse_expression(group_expr, keywords) if group_expr else None
 
     def _resolve_source_port(self, source_node, connection_data):
         ws_name = connection_data.get("workspace")
@@ -134,7 +134,7 @@ class ConfigLoader(object):
         item_expression = foreach_data.get("item", "item")
 
         keywords["port"] = target_port
-        for item in exp_parser.parse(foreach_data["loop"], keywords):
+        for item in util.parse_expression(foreach_data["loop"], keywords):
             keywords["item"] = item
             conditions = foreach_data.get("conditions", [])
             if all(
@@ -143,7 +143,7 @@ class ConfigLoader(object):
             ):
                 # Add a copy of the metadata to each connection so that it's
                 # not shared
-                source_node = exp_parser.parse(item_expression, keywords)
+                source_node = util.parse_expression(item_expression, keywords)
                 source_port = self._resolve_source_port(source_node, connection_data)
                 group = self._resolve_group(
                     foreach_data,
