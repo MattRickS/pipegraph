@@ -1,34 +1,31 @@
+import enum
+
+
+class Subtype(enum.Enum):
+    Boolean = "bool"
+    Dict = "dict"
+    Integer = "int"
+    Float = "float"
+    List = "list"
+    Mixed = "mixed"
+    String = "str"
+
+
+def collapse_meta(meta):
+    value = meta["value"]
+    if meta["type"] == "dict" and meta["subtype"] == Subtype.Mixed.value:
+        value = collapse_metadata_dict(value)
+    elif meta["type"] == "list" and meta["subtype"] == Subtype.Mixed.value:
+        value = collapse_metadata_list(value)
+    return value
+
+
 def collapse_metadata_list(metadata):
-    result = []
-    for meta in metadata:
-        value = meta["value"]
-        if meta["type"] == "dict":
-            value = collapse_metadata_dict(value)
-        elif meta["type"] == "list":
-            value = collapse_metadata_list(value)
-        result.append(value)
-    return result
+    return [collapse_meta(meta) for meta in metadata]
 
 
 def collapse_metadata_dict(metadata):
-    result = {}
-    for key, meta in metadata.items():
-        value = meta["value"]
-        if meta["type"] == "dict":
-            value = collapse_metadata_dict(value)
-        elif meta["type"] == "list":
-            value = collapse_metadata_list(value)
-        result[key] = value
-    return result
-
-
-def get_metadata(metadata, key):
-    value = metadata[key]["value"]
-    if metadata[key]["type"] == "dict":
-        return collapse_metadata_dict(value)
-    elif metadata[key]["type"] == "list":
-        return collapse_metadata_list(value)
-    return value
+    return {key: collapse_meta(meta) for key, meta in metadata.items()}
 
 
 class Port(object):
@@ -40,7 +37,7 @@ class Port(object):
         self.metadata = metadata or {}
 
     def __getitem__(self, item):
-        return get_metadata(self.metadata, item)
+        return collapse_meta(self.metadata[item])
 
     def __str__(self):
         return "{s.__class__.__name__}({s._type}, {s._name})".format(s=self)
@@ -88,7 +85,7 @@ class Node(object):
             self.set_parent(parent)
 
     def __getitem__(self, item):
-        return get_metadata(self.metadata, item)
+        return collapse_meta(self.metadata[item])
 
     def __repr__(self):
         return "{s.__class__.__name__}({s._type!r}, {s._name!r})".format(s=self)
@@ -149,7 +146,7 @@ class Connection(object):
         self.metadata = metadata or {}
 
     def __getitem__(self, item):
-        return get_metadata(self.metadata, item)
+        return collapse_meta(self.metadata[item])
 
     def __repr__(self):
         return (
